@@ -8,7 +8,7 @@
  *     stores the node details.
  *
  * Global variables:
- *   gHighestPage  - Tracks the largest page number allocated (1-based for nodes)
+ *   HighestPage  - Tracks the largest page number allocated (1-based for nodes)
  *   gScanIndex    - Tracks the current index into the sorted key list while scanning
  *
  * Only DT_INT keys are supported.
@@ -37,13 +37,13 @@
   * Describes how a node is represented on disk after an initial bool flag.
   *
   * Fields:
-  *   parentIdx   : Page number of this node's parent (-1 if root)
-  *   nodeLeafBit : True if the node is a leaf; in this design all nodes are leaves
-  *   leftSlot    : RID tied to the first key
-  *   leftKey     : The first integer key; -1 if unused
-  *   rightSlot   : RID for the second key (if used)
-  *   rightKey    : The second integer key; -1 if unused
-  *   chainLink   : Placeholder for leaf chaining (unused)
+  *   parentIdx  : Page number of this node's parent (-1 if root)
+  *   nodeLeafBit: True if the node is a leaf; in this design, all nodes are leaves
+  *   leftSlot   : RID tied to the first key
+  *   leftKey    : The first integer key; -1 if unused
+  *   rightSlot  : RID for the second key (if used)
+  *   rightKey   : The second integer key; -1 if unused
+  *   chainLink  : Placeholder for leaf chaining (unused)
   */
  typedef struct NodeInPage {
      int  parentIdx;
@@ -61,11 +61,11 @@
   * A pointer to CoreIndex is stored in BTreeHandle->mgmtData.
   *
   * Fields:
-  *   poolRef   : A pointer to the buffer pool
-  *   pageRef   : A page handle for read/write operations
-  *   topNode   : The page number of the root node (initialized on the first insertion)
-  *   keysTotal : The total count of keys in the tree
-  *   nodeLimit : The maximum keys allowed per node (loaded from page 0)
+  *   poolRef  : A pointer to the buffer pool
+  *   pageRef  : A page handle for read/write operations
+  *   topNode  : The page number of the root node (initialized on the first insertion)
+  *   keysTotal: The total count of keys in the tree
+  *   nodeLimit: The maximum keys allowed per node (loaded from page 0)
   */
  typedef struct CoreIndex {
      BM_BufferPool *poolRef;
@@ -79,47 +79,72 @@
  
  /* initIndexManager: prepares storage management. */
  RC initIndexManager(void *unused) {
-     printf("Initializing the minimal B+ tree manager.\n");
-     initStorageManager();
-     return RC_OK;
- }
- 
- /* shutdownIndexManager: no special teardown needed. */
- RC shutdownIndexManager() {
-     printf("Shutting down the minimal B+ tree manager.\n");
-     return RC_OK;
- }
- 
- /*
-  * createBtree:
-  * Produces a page file named idxId and writes n (the node limit) into page 0.
-  * Supports only DT_INT keys.
-  */
- RC createBtree(char *idxId, DataType keyType, int n) {
-     printf("Creating index file '%s'\n", idxId);
-     RC rc = createPageFile(idxId);
-     if (rc != RC_OK)
-         return rc;
- 
-     SM_FileHandle fileCtrl;
-     rc = openPageFile(idxId, &fileCtrl);
-     if (rc != RC_OK)
-         return rc;
- 
-     ensureCapacity(1, &fileCtrl);
-     SM_PageHandle pageBuf = calloc(PAGE_SIZE, sizeof(char));
-     if (keyType != DT_INT) {
-         printf("Error: Only integer keys are allowed.\n");
-         free(pageBuf);
-         return RC_RM_UNKOWN_DATATYPE;
-     }
-     *((int *)pageBuf) = n;  /* store the node limit in page 0 */
-     rc = writeCurrentBlock(&fileCtrl, pageBuf);
-     free(pageBuf);
- 
-     closePageFile(&fileCtrl);
-     return rc;
- }
+    // Print a message indicating the index manager is starting up
+    printf("Initializing the minimal B+ tree manager.\n");
+    // Initialize the underlying storage manager (for paging, files, etc.)
+    initStorageManager();
+    // Return success code
+    return RC_OK;
+}
+
+/* shutdownIndexManager: no special teardown needed. */
+RC shutdownIndexManager() {
+    // Print a message indicating the index manager is shutting down
+    printf("Shutting down the minimal B+ tree manager.\n");
+    // Return success code
+    return RC_OK;
+}
+
+/*
+ * createBtree:
+ * Produces a page file named idxId and writes n (the node limit) into page 0.
+ * Supports only DT_INT keys.
+ */
+RC createBtree(char *idxId, DataType keyType, int n) {
+    // Log creation of a new B-tree index file
+    printf("Creating index file '%s'\n", idxId);
+
+    // Create the underlying page file on disk
+    RC rc = createPageFile(idxId);
+    if (rc != RC_OK)
+        // Propagate error if creation failed
+        return rc;
+
+    // Open the newly created page file for further operations
+    SM_FileHandle fileCtrl;
+    rc = openPageFile(idxId, &fileCtrl);
+    if (rc != RC_OK)
+        // Propagate error if open failed
+        return rc;
+
+    // Ensure at least one page exists (page 0) in the file
+    ensureCapacity(1, &fileCtrl);
+
+    // Allocate a zeroed buffer of one page size
+    SM_PageHandle pageBuf = calloc(PAGE_SIZE, sizeof(char));
+    // Verify that the requested key type is an integer
+    if (keyType != DT_INT) {
+        // Only integer keys are supported; print error and clean up
+        printf("Error: Only integer keys are allowed.\n");
+        free(pageBuf);
+        return RC_RM_UNKOWN_DATATYPE;
+    }
+
+    // Store the node limit 'n' into the first bytes of page 0
+    *((int *)pageBuf) = n;
+
+    // Write the prepared page buffer into the current block (page 0)
+    rc = writeCurrentBlock(&fileCtrl, pageBuf);
+    // Free the page buffer after writing
+    free(pageBuf);
+
+    // Close the page file handle
+    closePageFile(&fileCtrl);
+
+    // Return the result of the write operation
+    return rc;
+}
+
  
  /*
   * openBtree:
